@@ -1,0 +1,10 @@
+[package]
+name = "cursor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pixels = "0.15.0"
+pollster = "0.4.0"
+wgpu = "24.0.1"
+winit = "0.30.9"
