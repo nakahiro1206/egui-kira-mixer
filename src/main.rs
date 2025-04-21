@@ -1,134 +1,71 @@
-use pixels::{Pixels, SurfaceTexture};
-use std::sync::Arc;
-use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use eframe::egui;
+use eframe::egui::CentralPanel;
 
-#[derive(Default)]
-struct App<'window> {
-    window: Option<Arc<Window>>,
-    pixels: Option<Pixels<'window>>,
-    width: u32,
-    height: u32,
-    cursor_x: u32,
-    cursor_y: u32,
+mod audio_handle;
+mod command_receiver;
+use command_receiver::commander::{AudioCommand, Commander};
+
+const APP_NAME: &str = "sound-board-gui";
+
+fn main() -> Result<(), eframe::Error> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 480.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        APP_NAME,
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Ok(Box::new(MyApp::default()))
+        }),
+    )
 }
 
-impl<'window> ApplicationHandler for App<'window> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_none() {
-            let window = Arc::new(
-                event_loop
-                    .create_window(
-                        Window::default_attributes()
-                            .with_inner_size(LogicalSize::new(800, 600))
-                            .with_title("Custom Cursor")
-                            .with_transparent(true)
-                            .with_decorations(false), // Remove borders
-                    )
-                    .unwrap(),
-            );
+struct MyApp {
+    commander: Commander,
+}
 
-            let size = window.inner_size();
-            let surface_texture = SurfaceTexture::new(size.width, size.height, window.clone());
-            let pixels = Pixels::new(size.width, size.height, surface_texture)
-                .expect("Failed to initialize pixels");
+impl Default for MyApp {
+    fn default() -> Self {
+        let commander = Commander::new();
 
-            self.window = Some(window.clone());
-            self.pixels = Some(pixels);
-            self.width = size.width;
-            self.height = size.height;
-            self.cursor_x = size.width / 2;
-            self.cursor_y = size.height / 2;
-        }
+        Self { commander }
     }
+}
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                event_loop.exit();
-            }
-            WindowEvent::CursorMoved {
-                device_id,
-                position,
-            } => {
-                self.cursor_x = position.x as u32;
-                self.cursor_y = position.y as u32;
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let panel_frame = egui::Frame {
+            fill: ctx.style().visuals.window_fill(),
+            corner_radius: 10.0.into(),
+            stroke: ctx.style().visuals.widgets.noninteractive.fg_stroke,
+            outer_margin: 0.5.into(), // so the stroke is within the bounds
+            ..Default::default()
+        };
 
-                println!("Cursor moved to: ({}, {})", self.cursor_x, self.cursor_y);
+        CentralPanel::default().frame(panel_frame).show(ctx, |ui| {
+            ctx.style_mut(|style| {
+                style.text_styles.insert(
+                    egui::TextStyle::Button,
+                    egui::FontId::new(32.0, egui::FontFamily::Proportional),
+                );
+            });
 
-                self.window.as_ref().unwrap().request_redraw();
-            }
-            WindowEvent::CursorLeft { device_id } => {
-                println!("Cursor left the window. Resetting position.");
-                self.cursor_x = self.width / 2;
-                self.cursor_y = self.height / 2;
-                self.window.as_ref().unwrap().request_redraw();
-            }
-            WindowEvent::MouseWheel {
-                device_id,
-                delta,
-                phase,
-            } => {}
-            WindowEvent::RedrawRequested => {
-                if let Some(pixels) = self.pixels.as_mut() {
-                    // update pixels
-                    let frame = pixels.frame_mut();
-                    let width = self.width as usize;
-                    let height = self.height as usize;
-
-                    frame.fill(0);
-
-                    let x = self.cursor_x as usize;
-                    let y = self.cursor_y as usize;
-
-                    for x_val in x..width.min(x + 100) {
-                        for y_val in y..height.min(y + 100) {
-                            let index = (y_val * width + x_val) * 4;
-                            frame[index] = 255;
-                            frame[index + 1] = 0;
-                            frame[index + 2] = 0;
-                            frame[index + 3] = 255;
-                        }
+            egui::Grid::new("grid").show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let sound_name = "Add entry";
+                    if ui.button(sound_name).clicked() {
+                        self.commander
+                            .send(AudioCommand::AddAudio(String::from("audio")));
                     }
-                    // if x < width && y < height {
-                    //     let index = (y * width + x) * 4;
-                    //     frame[index] = 255;
-                    //     frame[index + 1] = 0;
-                    //     frame[index + 2] = 0;
-                    //     frame[index + 3] = 255;
-                    // }
-
-                    pixels.render().expect("Render failed");
-                }
-                self.window.as_ref().unwrap().request_redraw();
-            }
-            _ => (),
-        }
+                    let increment_name = "Increment cutoff";
+                    if ui.button(increment_name).clicked() {
+                        self.commander
+                            .send(AudioCommand::ChangeCutoff(String::from("cutoff")));
+                    }
+                });
+            });
+        });
     }
-
-    fn device_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
-        event: DeviceEvent,
-    ) {
-        if let DeviceEvent::Button { button, state } = event {
-            if button == 1 && state == ElementState::Pressed {
-                println!("Left mouse button clicked!");
-            }
-        }
-    }
-}
-
-fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop.set_control_flow(ControlFlow::Wait);
-
-    let mut app = App::default();
-    let _ = event_loop.run_app(&mut app).unwrap();
 }
