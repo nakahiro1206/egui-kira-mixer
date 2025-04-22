@@ -1,4 +1,4 @@
-use crate::audio_handle::types::AudioHandle;
+use crate::audio_handle::handle::AudioHandle;
 
 use std::{
     sync::{
@@ -12,6 +12,7 @@ use std::{
 pub enum AudioCommand {
     AddAudio(String),
     ChangeCutoff(String),
+    ChangeLowBandpass(String),
     SetVolume(String, f64),
 }
 
@@ -35,6 +36,9 @@ impl Commander {
                         }
                         AudioCommand::ChangeCutoff(name) => {
                             audio.change_cutoff();
+                        }
+                        AudioCommand::ChangeLowBandpass(name) => {
+                            audio.change_low_bandpass();
                         }
                         AudioCommand::SetVolume(name, val) => {}
                     }

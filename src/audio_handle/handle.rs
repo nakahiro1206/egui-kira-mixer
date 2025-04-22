@@ -1,10 +1,12 @@
 use kira::{
-    effect::filter::{FilterBuilder, FilterHandle, FilterMode},
-    effect::EffectBuilder,
+    effect::{
+        eq_filter::{EqFilterBuilder, EqFilterKind},
+        filter::FilterBuilder,
+    },
     modulator::tweener::{TweenerBuilder, TweenerHandle},
     sound::static_sound::StaticSoundData,
     track::{TrackBuilder, TrackHandle},
-    AudioManager, AudioManagerSettings, Easing, Mapping, Tween, Value,
+    AudioManager, AudioManagerSettings, Decibels, Easing, Mapping, Tween, Value,
 };
 use std::{collections::HashMap, time::Duration};
 
@@ -17,7 +19,9 @@ pub struct AudioHandle {
 pub struct TrackEffectHandle {
     pub handle: TrackHandle,
     pub tmp_value: f64,
+    pub low_tmp_value: f64,
     pub tweener: TweenerHandle,
+    pub low_band_tweener: TweenerHandle,
 }
 
 impl AudioHandle {
@@ -36,6 +40,11 @@ impl AudioHandle {
             .add_modulator(TweenerBuilder { initial_value })
             .unwrap();
 
+        let low_band_tweener = self
+            .manager
+            .add_modulator(TweenerBuilder { initial_value })
+            .unwrap();
+
         let filter_builder = FilterBuilder::new().cutoff(Value::from_modulator(
             &tweener,
             Mapping {
@@ -44,9 +53,26 @@ impl AudioHandle {
                 easing: Easing::Linear,
             },
         ));
+
+        let freq: f64 = 300.0;
+        let gain = Value::from_modulator(
+            &low_band_tweener,
+            Mapping {
+                input_range: (0.0, 1.0),
+                output_range: (Decibels::from(-60.0), Decibels::from(10.0)),
+                easing: Easing::Linear,
+            },
+        );
+        let q_value: f64 = 1.41; // it means 1 octave
+        let low_bandpass_builder = EqFilterBuilder::new(EqFilterKind::Bell, freq, gain, q_value);
+
         let mut track = self
             .manager
-            .add_sub_track(TrackBuilder::new().with_effect(filter_builder))
+            .add_sub_track(
+                TrackBuilder::new()
+                    .with_effect(filter_builder)
+                    .with_effect(low_bandpass_builder),
+            )
             .unwrap();
 
         let hash_code = "aladdin.ogg";
@@ -61,7 +87,9 @@ impl AudioHandle {
                         TrackEffectHandle {
                             handle: track,
                             tmp_value: initial_value,
+                            low_tmp_value: initial_value,
                             tweener,
+                            low_band_tweener,
                         },
                     );
                 }
@@ -82,6 +110,23 @@ impl AudioHandle {
         println!("New cutoff value: {}", track_effect_handle.tmp_value);
         track_effect_handle.tweener.set(
             track_effect_handle.tmp_value,
+            Tween {
+                duration: Duration::from_secs(3),
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn change_low_bandpass(&mut self) {
+        let hash = "aladdin.ogg";
+        let track_effect_handle = self.tracks.get_mut(hash).unwrap();
+        track_effect_handle.low_tmp_value += 0.1;
+        println!(
+            "New low bandpass value: {}",
+            track_effect_handle.low_tmp_value
+        );
+        track_effect_handle.low_band_tweener.set(
+            track_effect_handle.low_tmp_value,
             Tween {
                 duration: Duration::from_secs(3),
                 ..Default::default()

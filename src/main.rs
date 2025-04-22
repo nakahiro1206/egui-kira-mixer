@@ -64,6 +64,13 @@ impl eframe::App for MyApp {
                         self.commander
                             .send(AudioCommand::ChangeCutoff(String::from("cutoff")));
                     }
+                    let low_increment_name = "Increment low bandpass";
+                    if ui.button(low_increment_name).clicked() {
+                        self.commander
+                            .send(AudioCommand::ChangeLowBandpass(String::from(
+                                "low_bandpass",
+                            )));
+                    }
                 });
             });
         });
